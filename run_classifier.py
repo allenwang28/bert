@@ -123,6 +123,10 @@ flags.DEFINE_integer(
     "num_tpu_cores", 8,
     "Only used if `use_tpu` is True. Total number of TPU cores to use.")
 
+flags.DEFINE_bool(
+    "use_synthetic", False,
+    "Whether or not to use generated synthetic data.")
+
 
 class InputExample(object):
   """A single training/test example for simple sequence classification."""
@@ -506,6 +510,66 @@ def file_based_convert_examples_to_features(
   writer.close()
 
 
+def create_synthetic_data(seq_length):
+  """Creates an `input_fn` with synthetic data."""
+  tf.logging.info("Creating synthetic dataset.")
+
+  name_to_features = {
+      "input_ids": tf.FixedLenFeature([seq_length], tf.int64),
+      "input_mask": tf.FixedLenFeature([seq_length], tf.int64),
+      "segment_ids": tf.FixedLenFeature([seq_length], tf.int64),
+      "label_ids": tf.FixedLenFeature([], tf.int64),
+      "is_real_example": tf.FixedLenFeature([], tf.int64),
+  }
+
+  def _float_feature(values):
+    """Returns a float_list from a float / double."""
+    return tf.train.Feature(
+        float_list=tf.train.FloatList(value=list(values)))
+
+  def _int64_feature(values):
+    """Returns an int64_list from a bool / enum / int / uint."""
+    return tf.train.Feature(
+        int64_list=tf.train.Int64List(value=list(values)))
+
+  def _decode_record(record, name_to_features):
+    """Decodes a record to a TensorFlow example."""
+    example = tf.parse_single_example(record, name_to_features)
+
+    # tf.Example only supports tf.int64, but the TPU only supports tf.int32.
+    # So cast all int64 to int32.
+    for name in list(example.keys()):
+      t = example[name]
+      if t.dtype == tf.int64:
+        t = tf.to_int32(t)
+      example[name] = t
+
+    return example
+
+
+  def input_fn(params):
+    batch_size = params["batch_size"]
+    ds = tf.data.Dataset.from_tensors(
+        tf.constant(
+          tf.train.Example(
+            features=tf.train.Features(
+              feature={
+                "input_ids": _int64_feature([0]*seq_length),
+                "input_mask": _float_feature([0]*seq_length),
+                "segment_ids": _int64_feature([0]*seq_length),
+                "label_ids": _int64_feature([0]),
+                "is_real_example": _int64_feature([0])
+                })).SerializeToString(),
+              dtype=tf.string)).repeat()
+    ds = ds.apply(
+        tf.contrib.data.map_and_batch(
+          lambda record: _decode_record(record, name_to_features),
+          batch_size=batch_size,
+          drop_remainder=drop_remainder))
+    return ds
+
+  return input_fn
+
 def file_based_input_fn_builder(input_file, seq_length, is_training,
                                 drop_remainder):
   """Creates an `input_fn` closure to be passed to TPUEstimator."""
@@ -872,11 +936,15 @@ def main(_):
     tf.logging.info("  Num examples = %d", len(train_examples))
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
     tf.logging.info("  Num steps = %d", num_train_steps)
-    train_input_fn = file_based_input_fn_builder(
-        input_file=train_file,
-        seq_length=FLAGS.max_seq_length,
-        is_training=True,
-        drop_remainder=True)
+    if FLAGS.use_synthetic:
+      train_input_fn = create_synthetic_data(
+          seq_length=FLAGS.max_seq_length)
+    else:
+      train_input_fn = file_based_input_fn_builder(
+          input_file=train_file,
+          seq_length=FLAGS.max_seq_length,
+          is_training=True,
+          drop_remainder=True)
     estimator.train(input_fn=train_input_fn, max_steps=num_train_steps)
 
   if FLAGS.do_eval:
