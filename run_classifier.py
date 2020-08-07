@@ -555,7 +555,7 @@ def create_synthetic_data(seq_length):
             features=tf.train.Features(
               feature={
                 "input_ids": _int64_feature([0]*seq_length),
-                "input_mask": _float_feature([0]*seq_length),
+                "input_mask": _int64_feature([0]*seq_length),
                 "segment_ids": _int64_feature([0]*seq_length),
                 "label_ids": _int64_feature([0]),
                 "is_real_example": _int64_feature([0])
@@ -565,7 +565,7 @@ def create_synthetic_data(seq_length):
         tf.contrib.data.map_and_batch(
           lambda record: _decode_record(record, name_to_features),
           batch_size=batch_size,
-          drop_remainder=drop_remainder))
+          drop_remainder=True))
     return ds
 
   return input_fn
@@ -930,8 +930,9 @@ def main(_):
 
   if FLAGS.do_train:
     train_file = os.path.join(FLAGS.output_dir, "train.tf_record")
-    file_based_convert_examples_to_features(
-        train_examples, label_list, FLAGS.max_seq_length, tokenizer, train_file)
+    if not FLAGS.use_synthetic:
+      file_based_convert_examples_to_features(
+          train_examples, label_list, FLAGS.max_seq_length, tokenizer, train_file)
     tf.logging.info("***** Running training *****")
     tf.logging.info("  Num examples = %d", len(train_examples))
     tf.logging.info("  Batch size = %d", FLAGS.train_batch_size)
