@@ -25,7 +25,7 @@ import math
 import re
 import numpy as np
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 class BertConfig(object):
@@ -359,10 +359,50 @@ def dropout(input_tensor, dropout_prob):
   return output
 
 
-def layer_norm(input_tensor, name=None):
-  """Run layer normalization on the last dimension of the tensor."""
-  return tf.contrib.layers.layer_norm(
-      inputs=input_tensor, begin_norm_axis=-1, begin_params_axis=-1, scope=name)
+def layer_norm_vars(filters, layer_idx, total_layers):
+  """Create Variables for layer norm."""
+  if total_layers == 0:
+    scale = tf.get_variable("gamma", filters, initializer=tf.ones_initializer())
+    bias = tf.get_variable("beta", filters, initializer=tf.zeros_initializer())
+  else:
+    scale = tf.get_variable(
+        "gamma", [total_layers, filters], initializer=tf.ones_initializer())
+    bias = tf.get_variable(
+        "beta", [total_layers, filters], initializer=tf.zeros_initializer())
+    scale = tf.gather(scale, layer_idx)
+    bias = tf.gather(bias, layer_idx)
+  return scale, bias
+
+
+def layer_norm_compute(x, epsilon, scale, bias):
+  """Layer norm raw computation."""
+  epsilon, scale, bias = [cast_like(t, x) for t in [epsilon, scale, bias]]
+  counts, means_ss, variance_ss, _, = tf.nn.sufficient_statistics(
+      x, axes=[-1], keep_dims=True)
+  mean, variance = tf.nn.normalize_moments(counts, means_ss, variance_ss, None)
+  norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
+  return norm_x * scale + bias
+
+
+def layer_norm(x,
+               layer_idx=0,
+               total_layers=0,
+               filters=None,
+               epsilon=1e-12,
+               name=None,
+               reuse=None):
+  """Layer normalize the tensor x, averaging over the last dimension."""
+  if filters is None:
+    filters = shape_list(x)[-1]
+  with tf.variable_scope(
+      "LayerNorm" if not name else name,
+      default_name="LayerNorm",
+      values=[x],
+      reuse=reuse):
+    scale, bias = layer_norm_vars(filters, layer_idx, total_layers)
+    return tf.cast(
+        layer_norm_compute(tf.cast(x, tf.float32), epsilon, scale, bias),
+        x.dtype)
 
 
 def layer_norm_and_dropout(input_tensor, dropout_prob, name=None):
