@@ -129,6 +129,10 @@ flags.DEFINE_bool(
     "use_synthetic", False,
     "Whether or not to use generated synthetic data.")
 
+flags.DEFINE_integer(
+    "num_labels", None,
+    "Debugging flag. Should only be used if using synthetic data.")
+
 
 class InputExample(object):
   """A single training/test example for simple sequence classification."""
@@ -910,10 +914,14 @@ def main(_):
         len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
     num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
 
+  if FLAGS.num_labels is not None:
+    num_labels = FLAGS.num_labels
+  else:
+    num_labels = len(label_list)
+
   model_fn = model_fn_builder(
       bert_config=bert_config,
-      #num_labels=len(label_list),
-      num_labels=500000,
+      num_labels=num_labels,
       init_checkpoint=FLAGS.init_checkpoint,
       learning_rate=FLAGS.learning_rate,
       num_train_steps=num_train_steps,
