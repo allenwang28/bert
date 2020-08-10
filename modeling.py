@@ -1081,3 +1081,18 @@ def assert_rank(tensor, expected_rank, name=None):
         "For the tensor `%s` in scope `%s`, the actual rank "
         "`%d` (shape = %s) is not equal to the expected rank `%s`" %
         (name, scope_name, actual_rank, str(tensor.shape), str(expected_rank)))
+
+
+def cast_like(x, y):
+  """Cast x to y's dtype, if necessary."""
+  x = tf.convert_to_tensor(x)
+  y = tf.convert_to_tensor(y)
+
+  if x.dtype.base_dtype == y.dtype.base_dtype:
+    return x
+
+  cast_x = tf.cast(x, y.dtype)
+  if cast_x.device != x.device:
+    tf.logging.warning("Cast for %s may induce copy from '%s' to '%s'", x.name,
+                       x.device, cast_x.device)
+  return cast_x
