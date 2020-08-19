@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging as stdlogging
+stdlogging.getLogger("oauth2client").setLevel(stdlogging.ERROR)
+stdlogging.getLogger("googleapiclient").setLevel(stdlogging.ERROR)
+
 from absl import flags
 from absl import logging
 
