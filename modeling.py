@@ -211,6 +211,7 @@ class BertModel(object):
         is invalid.
     """
     config.hidden_size = 128
+    config.num_attention_heads = 8
     config = copy.deepcopy(config)
     if not is_training:
       config.hidden_dropout_prob = 0.0
