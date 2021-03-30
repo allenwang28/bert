@@ -673,6 +673,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     hidden_size = output_layer.shape[-1]
 
   if apply_splits:
+    logging.info("Applying splits.")
     default_chunk_size = 100000
     num_splits = math.ceil(num_labels / default_chunk_size)
     chunk_sizes = [default_chunk_size] * (num_splits - 1) + [num_labels % default_chunk_size]
