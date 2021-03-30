@@ -138,6 +138,11 @@ flags.DEFINE_integer(
     "num_labels", None,
     "Debugging flag. Should only be used if using synthetic data.")
 
+flags.DEFINE_integer(
+    "num_train_steps", None,
+    "The number of training steps to run, if specified.")
+
+
 flags.DEFINE_bool(
     "apply_splits", False,
     "Whether or not to apply weight splitting.") 
@@ -942,8 +947,11 @@ def main(_):
   num_warmup_steps = None
   if FLAGS.do_train:
     train_examples = processor.get_train_examples(FLAGS.data_dir)
-    num_train_steps = int(
-        len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
+    if FLAGS.num_train_steps:
+      num_train_steps = FLAGS.num_train_steps
+    else:
+      num_train_steps = int(
+          len(train_examples) / FLAGS.train_batch_size * FLAGS.num_train_epochs)
     num_warmup_steps = int(num_train_steps * FLAGS.warmup_proportion)
 
   if FLAGS.num_labels is not None:
