@@ -137,6 +137,10 @@ flags.DEFINE_integer(
     "num_labels", None,
     "Debugging flag. Should only be used if using synthetic data.")
 
+flags.DEFINE_bool(
+    "apply_splits", False,
+    "Whether or not to apply weight splitting.") 
+
 
 class InputExample(object):
   """A single training/test example for simple sequence classification."""
@@ -646,7 +650,7 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
 
 
 def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
-                 labels, num_labels, use_one_hot_embeddings):
+                 labels, num_labels, use_one_hot_embeddings, apply_splits):
   """Creates a classification model."""
   model = modeling.BertModel(
       config=bert_config,
@@ -668,12 +672,30 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   except AttributeError:
     hidden_size = output_layer.shape[-1]
 
-  output_weights = tf.get_variable(
-      "output_weights", [num_labels, hidden_size],
-      initializer=tf.truncated_normal_initializer(stddev=0.02))
+  if apply_splits:
+    default_chunk_size = 100000
+    num_splits = math.ceil(num_labels / default_chunk_size)
+    chunk_sizes = [default_chunk_size] * (num_splits - 1) + [num_labels % default_chunk_size]
+    weight_splits = []
+    bias_splits = []
+    for i in range(num_splits):
+      weight_splits.append(tf.get_variable(
+          "output_weights_split_%d" % i,
+          [chunk_sizes[i], hidden_size],
+          initializer=tf.truncated_normal_initializer(stddev=0.02)))
+      bias_splits.append(tf.get_variable(
+          "output_bias_split_%d" % i,
+          [chunk_sizes[i]],
+          initializer=tf.zeros_initializer()))
+    output_weights = tf.concat(weight_splits, 0)
+    output_bias = tf.concat(bias_splits, 0)
+  else:
+    output_weights = tf.get_variable(
+        "output_weights", [num_labels, hidden_size],
+        initializer=tf.truncated_normal_initializer(stddev=0.02))
 
-  output_bias = tf.get_variable(
-      "output_bias", [num_labels], initializer=tf.zeros_initializer())
+    output_bias = tf.get_variable(
+        "output_bias", [num_labels], initializer=tf.zeros_initializer())
 
   with tf.variable_scope("loss"):
     if is_training:
@@ -695,7 +717,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
 def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, use_tpu,
-                     use_one_hot_embeddings):
+                     use_one_hot_embeddings, apply_splits):
   """Returns `model_fn` closure for TPUEstimator."""
 
   def model_fn(features, labels, mode, params):  # pylint: disable=unused-argument
@@ -719,7 +741,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
     (total_loss, per_example_loss, logits, probabilities) = create_model(
         bert_config, is_training, input_ids, input_mask, segment_ids, label_ids,
-        num_labels, use_one_hot_embeddings)
+        num_labels, use_one_hot_embeddings, apply_splits)
 
     tvars = tf.trainable_variables()
     initialized_variable_names = {}
@@ -935,7 +957,8 @@ def main(_):
       num_train_steps=num_train_steps,
       num_warmup_steps=num_warmup_steps,
       use_tpu=FLAGS.use_tpu,
-      use_one_hot_embeddings=FLAGS.use_tpu)
+      use_one_hot_embeddings=FLAGS.use_tpu,
+      apply_splits=FLAGS.apply_splits)
 
   # If TPU is not available, this will fall back to normal Estimator on CPU
   # or GPU.
