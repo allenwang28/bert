@@ -662,6 +662,7 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
 def create_classification_head(
     output_layer,
     labels,
+    is_training,
     num_labels,
     trainable,
     prefix,
@@ -740,6 +741,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   loss_1, per_example_loss_1, logits_1, probabilities_1 = create_classification_head(
       output_layer=output_layer,
       labels=labels,
+      is_training=is_training,
       num_labels=num_labels,
       trainable=False,
       prefix="output_1",
@@ -748,6 +750,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     loss_2, per_example_loss_2, logits_2, probabilities_2 = create_classification_head(
         output_layer=output_layer,
         labels=labels,
+        is_training=is_training,
         num_labels=num_labels_2,
         trainable=True,
         prefix="output_2",
