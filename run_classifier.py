@@ -675,8 +675,8 @@ def create_classification_head(
 
   if apply_splits:
     logging.info("Applying splits.")
-    num_splits = math.ceil(num_labels / default_chunk_size)
-    chunk_sizes = [default_chunk_size] * (num_splits - 1) + [num_labels % default_chunk_size]
+    num_splits = math.ceil(num_labels / chunk_size)
+    chunk_sizes = [chunk_size] * (num_splits - 1) + [num_labels % chunk_size]
     weight_splits = []
     bias_splits = []
     for i in range(num_splits):
