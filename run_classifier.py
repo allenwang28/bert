@@ -760,10 +760,10 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
         trainable=True,
         prefix="output_2",
         apply_splits=apply_splits)
-    return (loss_1 + loss_2,
-        per_example_loss_1 + per_example_loss_2,
-        logits_1 + logits_2,
-        probabilities_1 + probabilities_2)
+    return (tf.stack(loss_1, loss_2),
+        tf.stack(per_example_loss_1, per_example_loss_2),
+        tf.stack(logits_1, logits_2),
+        tf.stack(probabilities_1, probabilities_2))
   else:
     return loss_1, per_example_loss_1, logits_1, probabilities_1
 
@@ -796,7 +796,6 @@ def model_fn_builder(bert_config, num_labels, num_labels_2, init_checkpoint, lea
     (total_loss, per_example_loss, logits, probabilities) = create_model(
         bert_config, is_training, input_ids, input_mask, segment_ids, label_ids,
         num_labels, num_labels_2, use_one_hot_embeddings, apply_splits)
-    logging.info("Did this work??")
 
     tvars = tf.trainable_variables()
     initialized_variable_names = {}
