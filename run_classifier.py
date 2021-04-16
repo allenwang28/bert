@@ -760,10 +760,9 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
         trainable=True,
         prefix="output_2",
         apply_splits=apply_splits)
-    return (tf.stack(loss_1, loss_2),
-        tf.stack(per_example_loss_1, per_example_loss_2),
-        tf.stack(logits_1, logits_2),
-        tf.stack(probabilities_1, probabilities_2))
+    logging.info("Stacking loss")
+    loss = tf.stack(loss_1, loss_2)
+    return loss, per_example_loss_1, logits_1, probabilities_1
   else:
     return loss_1, per_example_loss_1, logits_1, probabilities_1
 
