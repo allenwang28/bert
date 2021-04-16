@@ -760,10 +760,10 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
         trainable=True,
         prefix="output_2",
         apply_splits=apply_splits)
-    return (tf.add_n(loss_1, loss_2),
-        tf.add_n(per_example_loss_1, per_example_loss_2),
-        tf.add_n(logits_1, logits_2),
-        tf.add_n(probabilities_1, probabilities_2))
+    return (loss_1 + loss_2,
+        per_example_loss_1 + per_example_loss_2,
+        logits_1 + logits_2,
+        probabilities_1 + probabilities_2)
   else:
     return loss_1, per_example_loss_1, logits_1, probabilities_1
 
