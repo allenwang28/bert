@@ -677,7 +677,10 @@ def create_classification_head(
   if apply_splits:
     logging.info("Applying splits.")
     num_splits = math.ceil(num_labels / chunk_size)
-    chunk_sizes = [chunk_size] * (num_splits - 1) + [num_labels % chunk_size]
+    if num_labels % chunk_size == 0:
+      chunk_sizes = [chunk_size] * num_splits
+    else:
+      chunk_sizes = [chunk_size] * (num_splits - 1) + [num_labels % chunk_size]
     weight_splits = []
     bias_splits = []
     for i in range(num_splits):
@@ -738,6 +741,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
   #
   # If you want to use the token-level output, use model.get_sequence_output()
   # instead.
+  logging.info("Creating classification head 1")
   loss_1, per_example_loss_1, logits_1, probabilities_1 = create_classification_head(
       output_layer=output_layer,
       labels=labels,
@@ -747,6 +751,7 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
       prefix="output_1",
       apply_splits=apply_splits)
   if num_labels_2:
+    logging.info("Creating classification head 2")
     loss_2, per_example_loss_2, logits_2, probabilities_2 = create_classification_head(
         output_layer=output_layer,
         labels=labels,
