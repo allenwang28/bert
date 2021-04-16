@@ -139,13 +139,17 @@ flags.DEFINE_integer(
     "Debugging flag. Should only be used if using synthetic data.")
 
 flags.DEFINE_integer(
+    "num_labels_2", None,
+    "Debugging flag. Should only be used if using synthetic data.")
+
+flags.DEFINE_integer(
     "num_train_steps", None,
     "The number of training steps to run, if specified.")
 
 
 flags.DEFINE_bool(
     "apply_splits", False,
-    "Whether or not to apply weight splitting.") 
+    "Whether or not to apply weight splitting.")
 
 
 class InputExample(object):
@@ -655,24 +659,15 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
       tokens_b.pop()
 
 
-def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
-                 labels, num_labels, use_one_hot_embeddings, apply_splits):
-  """Creates a classification model."""
-  model = modeling.BertModel(
-      config=bert_config,
-      is_training=is_training,
-      input_ids=input_ids,
-      input_mask=input_mask,
-      token_type_ids=segment_ids,
-      use_one_hot_embeddings=use_one_hot_embeddings)
-
-  # In the demo, we are doing a simple classification task on the entire
-  # segment.
-  #
-  # If you want to use the token-level output, use model.get_sequence_output()
-  # instead.
-  output_layer = model.get_pooled_output()
-
+def create_classification_head(
+    output_layer,
+    labels,
+    num_labels,
+    trainable,
+    prefix,
+    apply_splits,
+    chunk_size=100000):
+  """Creates large embeddings, splits into chunks and concatenates."""
   try:
     hidden_size = output_layer.shape[-1].value
   except AttributeError:
@@ -680,29 +675,32 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
   if apply_splits:
     logging.info("Applying splits.")
-    default_chunk_size = 100000
     num_splits = math.ceil(num_labels / default_chunk_size)
     chunk_sizes = [default_chunk_size] * (num_splits - 1) + [num_labels % default_chunk_size]
     weight_splits = []
     bias_splits = []
     for i in range(num_splits):
       weight_splits.append(tf.get_variable(
-          "output_weights_split_%d" % i,
+          prefix + "_weights_split_%d" % i,
           [chunk_sizes[i], hidden_size],
+          trainable=trainable,
           initializer=tf.truncated_normal_initializer(stddev=0.02)))
       bias_splits.append(tf.get_variable(
-          "output_bias_split_%d" % i,
+          prefix + "_bias_split_%d" % i,
           [chunk_sizes[i]],
+          trainable=trainable,
           initializer=tf.zeros_initializer()))
-    output_weights = tf.concat(weight_splits, 0)
-    output_bias = tf.concat(bias_splits, 0)
+    output_weights, output_biases = tf.concat(weight_splits, 0), tf.concat(bias_splits, 0)
   else:
     output_weights = tf.get_variable(
-        "output_weights", [num_labels, hidden_size],
+        prefix + "_weights", [num_labels, hidden_size],
+          trainable=trainable,
         initializer=tf.truncated_normal_initializer(stddev=0.02))
 
     output_bias = tf.get_variable(
-        "output_bias", [num_labels], initializer=tf.zeros_initializer())
+        prefix + "_bias", [num_labels],
+        trainable=trainable,
+        initializer=tf.zeros_initializer())
 
   with tf.variable_scope("loss"):
     if is_training:
@@ -722,7 +720,48 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
     return (loss, per_example_loss, logits, probabilities)
 
 
-def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
+def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
+                 labels, num_labels, num_labels_2, use_one_hot_embeddings, apply_splits):
+  """Creates a classification model."""
+  model = modeling.BertModel(
+      config=bert_config,
+      is_training=is_training,
+      input_ids=input_ids,
+      input_mask=input_mask,
+      token_type_ids=segment_ids,
+      use_one_hot_embeddings=use_one_hot_embeddings)
+
+  output_layer = model.get_pooled_output()
+  # In the demo, we are doing a simple classification task on the entire
+  # segment.
+  #
+  # If you want to use the token-level output, use model.get_sequence_output()
+  # instead.
+  loss_1, per_example_loss_1, logits_1, probabilities_1 = create_classification_head(
+      output_layer=output_layer,
+      labels=labels,
+      num_labels=num_labels,
+      trainable=False,
+      prefix="output_1",
+      apply_splits=apply_splits)
+  if num_labels_2:
+    loss_2, per_example_loss_2, logits_2, probabilities_2 = create_classification_head(
+        output_layer=output_layer,
+        labels=labels,
+        num_labels=num_labels_2,
+        trainable=True,
+        prefix="output_2",
+        apply_splits=apply_splits)
+    return (tf.add_n(loss_1, loss_2),
+        tf.add_n(per_example_loss_1, per_example_loss_2),
+        tf.add_n(logits_1, logits_2),
+        tf.add_n(probabilities_1, probabilities_2))
+  else:
+    return loss_1, per_example_loss_1, logits_1, probabilities_1
+
+
+
+def model_fn_builder(bert_config, num_labels, num_labels_2, init_checkpoint, learning_rate,
                      num_train_steps, num_warmup_steps, use_tpu,
                      use_one_hot_embeddings, apply_splits):
   """Returns `model_fn` closure for TPUEstimator."""
@@ -748,7 +787,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
 
     (total_loss, per_example_loss, logits, probabilities) = create_model(
         bert_config, is_training, input_ids, input_mask, segment_ids, label_ids,
-        num_labels, use_one_hot_embeddings, apply_splits)
+        num_labels, num_labels_2, use_one_hot_embeddings, apply_splits)
 
     tvars = tf.trainable_variables()
     initialized_variable_names = {}
@@ -962,6 +1001,7 @@ def main(_):
   model_fn = model_fn_builder(
       bert_config=bert_config,
       num_labels=num_labels,
+      num_labels_2=FLAGS.num_labels_2,
       init_checkpoint=FLAGS.init_checkpoint,
       learning_rate=FLAGS.learning_rate,
       num_train_steps=num_train_steps,
