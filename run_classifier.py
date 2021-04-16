@@ -691,7 +691,7 @@ def create_classification_head(
           [chunk_sizes[i]],
           trainable=trainable,
           initializer=tf.zeros_initializer()))
-    output_weights, output_biases = tf.concat(weight_splits, 0), tf.concat(bias_splits, 0)
+    output_weights, output_bias = tf.concat(weight_splits, 0), tf.concat(bias_splits, 0)
   else:
     output_weights = tf.get_variable(
         prefix + "_weights", [num_labels, hidden_size],
